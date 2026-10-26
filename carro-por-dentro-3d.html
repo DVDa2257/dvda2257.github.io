@@ -1,0 +1,245 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Um carro por dentro, com o mascote</title>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@500;700&display=swap">
+<style>
+:root{--ink:#f2efe6;--acc:#d97757;--pan:rgba(20,24,28,.86);box-sizing:border-box;padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}
+html{scroll-padding-top:env(safe-area-inset-top,0px)}
+html,body{height:100%;margin:0;background:#161d23;color:var(--ink);font-family:'Barlow Condensed','Arial Narrow',system-ui,sans-serif}
+#app{height:100%;display:flex;flex-direction:column}
+#v{flex:1;position:relative;overflow:hidden;min-height:0;touch-action:none}
+canvas{display:block;width:100%;height:100%}
+#hud{position:absolute;top:10px;left:10px;background:var(--pan);border-left:4px solid var(--acc);padding:8px 12px;font-size:clamp(17px,3.6vw,22px);line-height:1.25;display:flex;flex-direction:column;gap:2px;min-width:150px}
+#he{font-weight:700;font-size:1.2em;color:var(--acc)}
+#hc{display:block;height:8px;background:#3a4248;margin-top:3px}#hcf{display:block;height:100%;width:0;background:var(--acc)}
+#sub{position:absolute;left:0;right:0;bottom:12px;text-align:center;padding:8px 18px;margin:0 auto;max-width:900px;font-size:clamp(19px,3.8vw,28px);font-weight:500;background:var(--pan)}
+#sub:empty{display:none}
+#bar{position:absolute;left:0;right:0;bottom:0;height:5px;background:#3a4248;cursor:pointer}
+#fill{height:100%;width:0;background:var(--acc)}
+#ctl{display:flex;gap:10px;align-items:center;justify-content:center;padding:6px 10px 10px;font-size:24px}
+button{font:inherit;color:var(--ink);background:#2c353b;border:2px solid #56636b;border-radius:6px;padding:4px 14px;cursor:pointer;min-height:44px}
+button:focus-visible{outline:2px solid var(--acc);outline-offset:2px}
+#tm{min-width:90px;text-align:center}
+#start{position:absolute;inset:0;z-index:5;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:14px;background:rgba(20,24,28,.93);font-size:clamp(28px,6vw,46px);font-weight:700;text-align:center;padding:20px}
+#start small{font-size:.55em;font-weight:500;color:#b9c2c8}
+#start button{background:var(--acc);color:#161d23;border-color:var(--acc);font-weight:700}
+</style>
+</head>
+<body>
+<div id="app">
+ <div id="v">
+  <div id="hud"><span id="he">Etapa 1/6</span><span id="hg"></span><span id="hm"></span><span id="hv"></span><span>Embreagem<span id="hc"><i id="hcf"></i></span></span></div>
+  <div id="sub"></div>
+  <div id="bar"><div id="fill"></div></div>
+  <div id="start"><div>UM CARRO POR DENTRO</div><small>80 segundos, com narração · arraste para girar a câmera</small><button id="go">▶ INICIAR</button></div>
+ </div>
+ <div id="ctl">
+  <button id="pp" aria-label="Pausar ou continuar">⏸</button>
+  <button id="rs" aria-label="Reiniciar">↻</button>
+  <button id="vc" aria-label="Narração ligada ou desligada">🔊</button>
+  <span id="tm">0:00 / 1:20</span>
+ </div>
+</div>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+<script>
+const D=80,NOME=['Motor','Embreagem','Caixa de marcha','Câmbio','Eixo e diferencial','Rodas'];
+const SC=[
+ {s:0,e:12,say:"Oi! Sou o mascote do Claude Code. Tudo começa no motor: a gasolina queima, empurra os pistões, e eles giram o volante do motor."},
+ {s:12,e:24,say:"Entre o motor e a caixa fica a embreagem. Com o pedal solto, ela une os dois. Quando eu piso, o disco se afasta e o motor fica livre."},
+ {s:24,e:38,say:"Agora, a caixa de marcha. Ela guarda pares de engrenagens. Na primeira, uma pequena do eixo azul move uma grande do eixo laranja: o giro cai três vezes, e a força triplica."},
+ {s:38,e:50,say:"Conforme o carro acelera, uso o câmbio. A alavanca desliza a luva e escolhe outro par: segunda, depois terceira."},
+ {s:50,e:64,say:"A saída da caixa vira o eixo cardã, que leva o giro até o diferencial, lá atrás. O diferencial entrega essa força às rodas."},
+ {s:64,e:80,say:"Com as rodas girando, o carro anda! Marcha baixa dá força, marcha alta dá velocidade. Agora você sabe o que acontece por dentro. Até a próxima!"}
+];
+// ---- modelo (função do tempo) ----
+const GE=[{ni:7,no:21},{ni:10,no:18},{ni:14,no:14}],GX=[-1.6,0,1.6],RAT=[3,1.8,1];
+const CX=[-2.9,-1.15,0.45,2.05],SH=[26.5,40,46],CL=[[13,18],[25,30],[39,42],[45,48]];
+const EK=[[0,2.2],[2,2.2],[4,8],[8,10],[10,9],[11.5,2.5],[14.5,2.5],[15.5,7],[17.2,7],[18.5,2.5],[24,2.5],[28,3],[30,3],[31.5,5],[36,8],[38,8],[39.5,8],[41,5],[42.5,5.5],[45,9],[46.5,6],[48,6],[52,9],[70,9],[76,5],[80,2.5]];
+const ss=x=>x*x*(3-2*x),cl=(x,a,b)=>Math.max(a,Math.min(b,x));
+function interp(K,t){for(let i=1;i<K.length;i++)if(t<=K[i][0]){const a=K[i-1],b=K[i];return a[1]+(b[1]-a[1])*(t-a[0])/(b[0]-a[0])}return K[K.length-1][1]}
+const gearAt=t=>t<SH[0]?0:t<SH[1]?1:t<SH[2]?2:3;
+function pedal(t){let p=0;CL.forEach(([a,e])=>{const v=t<a?0:t<a+.6?(t-a)/.6:t<e?1:t<e+1?1-(t-e):0;p=Math.max(p,v)});return p}
+function collarX(t){let x=CX[0];for(let i=0;i<3;i++)if(t>=SH[i])x=CX[i]+(CX[i+1]-CX[i])*ss(Math.min(1,t-SH[i]));return x}
+function reach(t){let r=0;SH.forEach(s=>{r=Math.max(r,ss(cl((t-(s-.8))/.4,0,1))*(1-ss(cl((t-(s+1.2))/.4,0,1))))});return r}
+const S={wi:2.2,wo:0,di:0,dO:0,de:0};
+function seekSim(t){const we=interp(EK,t),g=gearAt(t);S.wi=we;S.wo=g?we/RAT[g-1]:0}
+function step(t,dt){
+ const we=interp(EK,t),g=gearAt(t),c=1-pedal(t);
+ S.wi+=(c*we+(1-c)*S.wo*RAT[Math.max(g,1)-1]-S.wi)*(1-Math.exp(-dt*6));
+ const k=1-Math.exp(-dt*4);S.wo+=g?c*(we/RAT[g-1]-S.wo)*k:-S.wo*k;
+ S.de+=we*dt;S.di+=S.wi*dt;S.dO+=S.wo*dt;
+}
+// ---- cena ----
+const box=document.getElementById('v');
+const renderer=new THREE.WebGLRenderer({antialias:true});
+renderer.setPixelRatio(Math.min(window.devicePixelRatio||1,2));
+box.insertBefore(renderer.domElement,box.firstChild);
+const scene=new THREE.Scene();scene.background=new THREE.Color(0x1d2c38);scene.fog=new THREE.Fog(0x1d2c38,28,75);
+const cam=new THREE.PerspectiveCamera(45,1,0.1,150);
+scene.add(new THREE.HemisphereLight(0xe6eef3,0x2a2a2a,1));
+const dl=new THREE.DirectionalLight(0xfff0d6,0.7);dl.position.set(4,9,10);scene.add(dl);
+const M=(c,o)=>new THREE.MeshStandardMaterial(Object.assign({color:c,flatShading:true,roughness:.55,metalness:.3},o||{}));
+const add=(g,m,x,y,z,p)=>{const o=new THREE.Mesh(g,m);o.position.set(x,y,z);(p||scene).add(o);return o};
+const cylX=(r,len,mat,x,y,z,p)=>{const g=new THREE.CylinderGeometry(r,r,len,24);g.rotateZ(Math.PI/2);return add(g,mat,x,y,z,p)};
+const cylZ=(r,len,mat,x,y,z,p)=>{const g=new THREE.CylinderGeometry(r,r,len,24);g.rotateX(Math.PI/2);return add(g,mat,x,y,z,p)};
+const GXW=-1.5;
+// ambiente: estrada, faixa, postes, sol, morros
+add(new THREE.PlaneGeometry(240,40),M(0x23282c,{flatShading:false}),0,-1,0).rotation.x=-Math.PI/2;
+const dc=document.createElement('canvas');dc.width=128;dc.height=16;const dx=dc.getContext('2d');dx.fillStyle='#23282c';dx.fillRect(0,0,128,16);dx.fillStyle='#ffd24a';dx.fillRect(0,0,70,16);
+const dt0=new THREE.CanvasTexture(dc);dt0.wrapS=THREE.RepeatWrapping;dt0.repeat.set(48,1);
+add(new THREE.PlaneGeometry(240,0.35),new THREE.MeshBasicMaterial({map:dt0}),0,-0.99,3.4).rotation.x=-Math.PI/2;
+const poles=[];for(let i=0;i<14;i++)poles.push(add(new THREE.BoxGeometry(0.14,4,0.14),M(0x3a4650),-40+i*6,1,-4));
+add(new THREE.CircleGeometry(6,32),new THREE.MeshBasicMaterial({color:0xffb86b,fog:false}),-26,9,-38);
+for(let i=0;i<6;i++)add(new THREE.ConeGeometry(9,8,5),M(0x22323d),-40+i*17,3,-34);
+// carro (silhueta lateral transparente)
+const sh=new THREE.Shape();[[-7,-.45],[7,-.45],[7,1],[3.9,1.3],[3,2.9],[-1.4,2.9],[-3,2.2],[-7,2]].forEach((p,i)=>i?sh.lineTo(p[0],p[1]):sh.moveTo(p[0],p[1]));
+const cg=new THREE.ExtrudeGeometry(sh,{depth:3,bevelEnabled:false});cg.translate(0,0,-1.5);
+const shell=add(cg,new THREE.MeshStandardMaterial({color:0xa9bcc8,transparent:true,opacity:.07,depthWrite:false,side:2}),0,0,0);
+shell.add(new THREE.LineSegments(new THREE.EdgesGeometry(cg),new THREE.LineBasicMaterial({color:0xd97757})));
+add(new THREE.BoxGeometry(14,0.08,3),M(0x3a4046),0,-0.45,0);
+add(new THREE.BoxGeometry(0.12,0.35,0.7),M(0xffe08a,{emissive:0x886600}),-7,1.2,0.8);add(new THREE.BoxGeometry(0.12,0.35,0.7),M(0xffe08a,{emissive:0x886600}),-7,1.2,-0.8);
+// motor
+const mEng=M(0x5a6670),mHead=M(0xc23b22),eg=GXW-3.4;
+add(new THREE.BoxGeometry(2.6,1.2,1.7),mEng,eg,1,0);add(new THREE.BoxGeometry(2.7,0.3,1.8),mHead,eg,1.75,0);
+const pist=[-0.8,0,0.8].map(x=>add(new THREE.CylinderGeometry(0.2,0.2,0.7,12),M(0xc9d1d6),eg+x,2.2,0));
+cylX(0.1,0.34,M(0x9aa4ab),GXW-1.94,1,0);
+const mFly=M(0x7b858b),mDisc=M(0x8a5a2a);
+const fly=cylX(0.55,0.15,mFly,GXW-1.78,1,0);add(new THREE.BoxGeometry(0.1,0.12,0.12),M(0xffd24a),0,0.42,0,fly);
+const disc=cylX(0.5,0.06,mDisc,GXW-1.66,1,0);add(new THREE.BoxGeometry(0.1,0.12,0.12),M(0xffffff),0.02,0.36,0,disc);
+// pedal
+const pedG=new THREE.Group();pedG.position.set(0.55,-0.2,0.2);scene.add(pedG);
+const pg=new THREE.BoxGeometry(0.14,0.55,0.34);pg.translate(0,0.275,0);add(pg,M(0x2a2e32),0,0,0,pedG);
+// caixa de marcha (grupo em escala 0.5)
+function gearGeo(n,r,w){const s=new THREE.Shape(),st=Math.PI*2/n,pts=[];
+ for(let i=0;i<n;i++)[[0,-.07],[.2,.07],[.5,.07],[.7,-.07]].forEach(([f,d])=>{const an=i*st+f*st,R=r+d;pts.push(new THREE.Vector2(Math.cos(an)*R,Math.sin(an)*R))});
+ s.setFromPoints(pts);const h=new THREE.Path();h.absarc(0,0,0.18,0,Math.PI*2,true);s.holes.push(h);
+ const g=new THREE.ExtrudeGeometry(s,{depth:w,bevelEnabled:false});g.translate(0,0,-w/2);g.rotateY(Math.PI/2);return g}
+const gb=new THREE.Group();gb.position.set(GXW,0.5,0);gb.scale.setScalar(0.5);scene.add(gb);
+const IDLE=new THREE.Color(0x6d6258),ACT=new THREE.Color(0xff8a1f),mIn=M(0x3d9be0);
+const inG=[],outG=[],outM=[],th0i=[],th0o=[];
+GE.forEach((e,i)=>{const si=Math.PI*2/e.ni,so=Math.PI*2/e.no;
+ th0i.push(-Math.PI/2-.35*si);th0o.push(Math.PI/2-.85*so);
+ inG.push(add(gearGeo(e.ni,e.ni/14,0.4),mIn,GX[i],1,0,gb));
+ const m=M(0x6d6258);outM.push(m);outG.push(add(gearGeo(e.no,e.no/14,0.4),m,GX[i],-1,0,gb))});
+const inShaft=cylX(0.15,5.9,M(0x2f7fbf),-0.45,1,0,gb);add(new THREE.BoxGeometry(0.6,0.08,0.08),M(0xffffff),-1.6,0.17,0,inShaft);
+const outShaft=cylX(0.15,6.4,M(0xd9741a),0.7,-1,0,gb);add(new THREE.BoxGeometry(0.6,0.08,0.08),M(0xffffff),2.5,0.17,0,outShaft);
+const mCollar=M(0xffb020);const collar=cylX(0.42,0.4,mCollar,CX[0],-1,0,gb);
+const hg=new THREE.BoxGeometry(5.4,5.2,3.5);
+const hous=add(hg,new THREE.MeshStandardMaterial({color:0xb9c6cf,transparent:true,opacity:.1,depthWrite:false}),0.25,-0.3,0,gb);
+hous.add(new THREE.LineSegments(new THREE.EdgesGeometry(hg),new THREE.LineBasicMaterial({color:0xc9d1d6})));
+const lever=new THREE.Group();lever.position.set(0.25,2.3,0);gb.add(lever);
+const rod=new THREE.CylinderGeometry(0.09,0.09,2.4,10);rod.translate(0,1.2,0);add(rod,M(0xc9d1d6),0,0,0,lever);
+const mKnob=M(0xc23b22);const knob=add(new THREE.SphereGeometry(0.4,16,12),mKnob,0,2.5,0,lever);
+// transmissão e eixos
+const mShaftD=M(0xd9741a),mDiff=M(0x6f7b82),mRim=M(0xaab3b9);
+const dshaft=cylX(0.09,4.15,mShaftD,2.575,0,0);add(new THREE.BoxGeometry(0.5,0.06,0.06),M(0xffffff),0,0.1,0,dshaft);
+add(new THREE.BoxGeometry(0.8,0.7,0.9),mDiff,5,0,0);cylZ(0.1,3.4,M(0x9aa4ab),5,0,0);cylZ(0.1,3.4,M(0x9aa4ab),-5,0,0);
+const wheels=[];[[-5,1.7],[-5,-1.7],[5,1.7],[5,-1.7]].forEach(([x,z])=>{
+ const w=new THREE.Group();w.position.set(x,0,z);scene.add(w);
+ w.add(new THREE.Mesh(new THREE.TorusGeometry(0.68,0.3,12,28),M(0x16181a,{flatShading:false})));
+ cylZ(0.45,0.3,mRim,0,0,0,w);
+ for(let i=0;i<5;i++){const a=i*Math.PI*2/5;cylZ(0.05,0.36,M(0xffb020),Math.cos(a)*0.25,Math.sin(a)*0.25,0,w)}
+ wheels.push(w)});
+// banco, volante
+add(new THREE.BoxGeometry(1.7,0.25,1.2),M(0x2f3a42),1.7,-0.175,0.2);add(new THREE.BoxGeometry(0.25,1.7,1.2),M(0x2f3a42),2.7,0.7,0.2);
+const sw=add(new THREE.TorusGeometry(0.4,0.05,8,20),M(0x16181a),0.55,1.5,0.2);sw.rotation.y=1.1;
+// mascote
+const mO=M(0xd97757,{flatShading:true,roughness:.7,metalness:.05}),mK=M(0x161616,{metalness:0,roughness:.9});
+const mas=new THREE.Group();mas.position.set(1.7,0.8,0.2);scene.add(mas);
+add(new THREE.BoxGeometry(1.4,1,0.9),mO,0,0,0,mas);
+const eyes=new THREE.Group();eyes.position.set(0,0.12,0.46);mas.add(eyes);
+[-0.28,0.28].forEach(x=>add(new THREE.BoxGeometry(0.16,0.3,0.04),mK,x,0,0,eyes));
+[-0.2,0.2,0.58].forEach(x=>add(new THREE.BoxGeometry(0.2,0.35,0.2),mO,x,-0.675,0,mas));
+const ug=new THREE.BoxGeometry(0.24,1,0.24),stm=()=>add(ug,mO,0,0,0);
+const armL=stm(),armR=stm(),legF=stm();
+const UP=new THREE.Vector3(0,1,0),V=[0,1,2,3,4,5].map(()=>new THREE.Vector3());
+function stretch(m,a,b){V[0].subVectors(b,a);const L=V[0].length()||1e-3;m.position.copy(a).addScaledVector(V[0],.5);m.scale.set(1,L,1);m.quaternion.setFromUnitVectors(UP,V[0].normalize())}
+// rótulos por etapa
+const labs=[];
+function lab(t,x,y,z,sc){const c=document.createElement('canvas');c.width=360;c.height=72;const tex=new THREE.CanvasTexture(c);
+ const sp=new THREE.Sprite(new THREE.SpriteMaterial({map:tex,depthTest:false,transparent:true}));sp.scale.set(2.5,0.5,1);sp.position.set(x,y,z);sp.renderOrder=10;scene.add(sp);
+ const draw=()=>{const g=c.getContext('2d');g.clearRect(0,0,360,72);g.fillStyle='rgba(20,24,28,.9)';g.fillRect(0,0,360,72);g.fillStyle='#d97757';g.fillRect(0,0,8,72);
+  g.fillStyle='#f2efe6';g.font='700 40px "Barlow Condensed","Arial Narrow",sans-serif';g.textAlign='center';g.textBaseline='middle';g.fillText(t,184,38);tex.needsUpdate=true};
+ draw();labs.push({draw,sp,sc})}
+lab('PISTÕES',eg,3.1,0,[0]);lab('VOLANTE DO MOTOR',GXW-1.8,-0.2,0.9,[0]);
+lab('EMBREAGEM',-3.3,2.0,0,[1]);lab('PEDAL',0.55,-0.85,0.5,[1]);
+lab('PAR DE ENGRENAGENS',-1.5,-1.1,0.9,[2]);lab('EIXO DO MOTOR',-2.9,1.95,0.9,[2]);
+lab('CÂMBIO (ALAVANCA)',-1.2,3.35,0,[3]);lab('LUVA SELETORA',-0.4,-1.1,0.9,[3]);
+lab('EIXO CARDÃ',3.3,-1.15,0.9,[4]);lab('DIFERENCIAL',5,1.2,0.9,[4]);lab('RODAS',5,1.7,1.9,[5]);
+if(document.fonts)document.fonts.load('700 40px "Barlow Condensed"').then(()=>labs.forEach(l=>l.draw())).catch(()=>{});
+// destaques por etapa
+const HL=[[[mEng,0xff8a1f],[mHead,0xff3a1f]],[[mFly,0xffb020],[mDisc,0xffb020]],[[mIn,0x3d9be0]],[[mCollar,0xffb020],[mKnob,0xff3a1f]],[[mShaftD,0xff8a1f],[mDiff,0xffb020]],[[mRim,0xffffff]]];
+const ALLM=[];HL.forEach(a=>a.forEach(x=>ALLM.push(x[0])));
+// alvos que o mascote aponta
+const TG=[new THREE.Vector3(eg,1.2,0.2),new THREE.Vector3(GXW-1.7,1,0.2),new THREE.Vector3(-1.4,0.5,0.2),null,new THREE.Vector3(4,0,0.2),null];
+// câmera
+const K=[{p:[-1.8,1.9,8.6],l:[-1.8,1,0]},{p:[-0.4,1.4,7.4],l:[-0.4,0.9,0]},{p:[0,1.1,6.8],l:[0,0.8,0]},{p:[0.2,1.6,7.4],l:[0,0.9,0]},{p:[2.8,1.6,9],l:[2.8,0.7,0]},{p:[0.5,2,17],l:[0,0.8,0]}];
+let dyaw=0,dpitch=0,drag=false,px=0,py=0;
+const sceneAt=t=>{let i=0;SC.forEach((c,k)=>{if(t>=c.s)i=k});return i};
+function place(t,si){
+ const b=si===0?1:ss(Math.min(1,(t-SC[si].s)/1.8)),A=K[Math.max(si-1,0)],B=K[si];
+ const mix=(a,c)=>a.map((v,i)=>v+(c[i]-v)*b),p=mix(A.p,B.p),l=mix(A.l,B.l),m=Math.max(1,1.4/cam.aspect);
+ const vx=(p[0]-l[0])*m,vy=(p[1]-l[1])*m,vz=(p[2]-l[2])*m,yaw=dyaw+Math.sin(t*0.35)*0.05,c=Math.cos(yaw),s=Math.sin(yaw),len=Math.hypot(vx,vy,vz);
+ cam.position.set(l[0]+vx*c+vz*s,l[1]+vy+dpitch*len*0.6,l[2]-vx*s+vz*c);cam.lookAt(l[0],l[1],l[2]);
+}
+// ---- quadro ----
+const $=id=>document.getElementById(id),sub=$('sub'),pp=$('pp');
+let now=0,playing=false,last=0,voice=true,spoken=-1;
+function render(t,dt){
+ const si=sceneAt(t),c=SC[si];if(dt>0)step(t,dt);
+ const pd=pedal(t),cx=collarX(t),g=gearAt(t),v=S.wo;
+ GE.forEach((e,i)=>{inG[i].rotation.x=th0i[i]+S.di;outG[i].rotation.x=th0o[i]-S.di*e.ni/e.no;
+  const en=cl(1-Math.abs(cx-(GX[i]+0.45))/0.5,0,1);outM[i].color.copy(IDLE).lerp(ACT,en);outM[i].emissive.setRGB(0.4*en,0.15*en,0)});
+ inShaft.rotation.x=S.di;outShaft.rotation.x=-S.dO;fly.rotation.x=S.de;disc.rotation.x=S.di;disc.position.x=GXW-1.66+0.28*pd;
+ collar.position.x=cx;lever.rotation.z=-(cx-0.45)*0.12;dshaft.rotation.x=-S.dO;
+ wheels.forEach(w=>w.rotation.z=-S.dO);pedG.rotation.z=pd*0.5;
+ pist.forEach((p,i)=>{const ph=S.de*2+i*2.09;p.position.y=2.2+0.22*Math.sin(ph);const f=Math.pow(Math.max(0,Math.sin(ph+1)),6);p.material.emissive.setRGB(f,f*.4,0)});
+ ALLM.forEach(m=>m.emissive.setRGB(0,0,0));
+ const amp=0.35+0.25*Math.sin(t*5);HL[si].forEach(([m,h])=>m.emissive.setHex(h).multiplyScalar(amp));
+ if(dt>0){dt0.offset.x-=v*dt/5;poles.forEach(p=>{p.position.x+=v*dt*0.6;if(p.position.x>44)p.position.x-=84})}
+ // mascote
+ mas.position.y=0.8+0.02*Math.sin(t*3);eyes.scale.y=(t%4)>3.85?0.1:1;
+ knob.getWorldPosition(V[5]);
+ const tg=TG[si]||V[5],sL=V[1].set(mas.position.x-0.7,mas.position.y-0.05,0.3),sR=V[2].set(mas.position.x+0.7,mas.position.y-0.05,0.3);
+ eyes.position.x=si===5?0:cl((tg.x-mas.position.x)*0.04,-0.12,0.12);
+ const pt=V[3].copy(tg).sub(sL).setLength(0.85).add(sL);
+ if(si===5||si===0&&t>12)pt.copy(sL).add(V[4].set(-0.32,-0.05,0.05));
+ pt.lerp(V[5],reach(t));stretch(armL,sL,pt);
+ const wv=(t<5||t>=66)?1:0,tr=V[3].copy(sR).add(V[4].set(0.32+0.1*wv,-0.05+wv*(0.6+0.2*Math.sin(t*10)),0.05));stretch(armR,sR,tr);
+ const hip=V[1].set(mas.position.x-0.58,mas.position.y-0.5,0.3),rest=V[2].copy(hip).add(V[4].set(0,-0.35,0)),top=V[3].set(pedG.position.x-Math.sin(pedG.rotation.z)*0.55,pedG.position.y+Math.cos(pedG.rotation.z)*0.55+0.02,0.3);
+ stretch(legF,hip,rest.lerp(top,cl(pd*3,0,1)));
+ labs.forEach(l=>l.sp.visible=l.sc.includes(si));
+ place(t,si);renderer.render(scene,cam);
+ const we=interp(EK,t);
+ $('he').textContent='Etapa '+(si+1)+'/6 · '+NOME[si];
+ $('hg').textContent=g?'Marcha '+g+'ª · '+RAT[g-1].toFixed(1).replace('.',',')+':1':'Ponto morto (N)';
+ $('hm').textContent='Motor '+(Math.round((600+(we-2)*500)/50)*50)+' rpm';$('hv').textContent='Carro '+Math.round(v*6)+' km/h';$('hcf').style.width=(pd*100)+'%';
+ sub.textContent=(t>=c.s+.4&&t<c.e-.3)?c.say:'';
+ $('fill').style.width=(t/D*100)+'%';const s=Math.floor(t);$('tm').textContent=Math.floor(s/60)+':'+String(s%60).padStart(2,'0')+' / 1:20';
+ if(playing&&voice&&si!==spoken&&t>=c.s+.5&&'speechSynthesis' in window){
+  spoken=si;speechSynthesis.cancel();const u=new SpeechSynthesisUtterance(c.say);u.lang='pt-BR';u.rate=1.05;speechSynthesis.speak(u)}
+}
+function frame(ts){
+ const dt=Math.min(0.1,(ts-last)/1000);last=ts;
+ if(playing){now+=dt;if(now>=D){now=D;playing=false;pp.textContent='▶'}}
+ render(now,playing?dt:0);requestAnimationFrame(frame);
+}
+function resize(){const w=box.clientWidth,h=box.clientHeight;renderer.setSize(w,h,false);cam.aspect=w/h;cam.updateProjectionMatrix()}
+window.addEventListener('resize',resize);resize();
+function stopVoice(){if('speechSynthesis' in window)speechSynthesis.cancel();spoken=-1}
+pp.onclick=()=>{playing=!playing;pp.textContent=playing?'⏸':'▶';if(!playing)stopVoice();else if(now>=D){now=0;seekSim(0)}};
+$('rs').onclick=()=>{stopVoice();now=0;seekSim(0);playing=true;pp.textContent='⏸'};
+$('vc').onclick=function(){voice=!voice;this.textContent=voice?'🔊':'🔇';if(!voice)stopVoice()};
+$('bar').onclick=e=>{const r=e.currentTarget.getBoundingClientRect();now=(e.clientX-r.left)/r.width*D;seekSim(now);stopVoice()};
+$('go').onclick=()=>{$('start').remove();now=0;seekSim(0);playing=true;stopVoice()};
+const cv=renderer.domElement;
+cv.addEventListener('pointerdown',e=>{drag=true;px=e.clientX;py=e.clientY;cv.setPointerCapture(e.pointerId)});
+cv.addEventListener('pointermove',e=>{if(!drag)return;dyaw=cl(dyaw-(e.clientX-px)*0.005,-0.9,0.9);dpitch=cl(dpitch+(e.clientY-py)*0.004,-0.4,0.5);px=e.clientX;py=e.clientY});
+cv.addEventListener('pointerup',()=>{drag=false});cv.addEventListener('dblclick',()=>{dyaw=0;dpitch=0});
+requestAnimationFrame(ts=>{last=ts;frame(ts)});
+</script>
+</body>
+</html>
