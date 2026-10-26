@@ -1,0 +1,204 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Como funciona a caixa de marcha</title>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@500;700&display=swap">
+<style>
+:root{--ink:#f2efe6;--acc:#ffb020;--pan:rgba(20,24,28,.86);box-sizing:border-box;padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}
+html{scroll-padding-top:env(safe-area-inset-top,0px)}
+html,body{height:100%;margin:0;background:#1c2226;color:var(--ink);font-family:'Barlow Condensed','Arial Narrow',system-ui,sans-serif}
+#app{height:100%;display:flex;flex-direction:column}
+#v{flex:1;position:relative;overflow:hidden;min-height:0;touch-action:none}
+canvas{display:block;width:100%;height:100%}
+#hud{position:absolute;top:10px;left:10px;background:var(--pan);border-left:4px solid var(--acc);padding:8px 12px;font-size:clamp(17px,3.6vw,22px);line-height:1.25;display:flex;flex-direction:column;gap:2px;min-width:150px}
+#hg{font-weight:700;font-size:1.25em;color:var(--acc)}
+#hc{height:8px;background:#3a4248;margin-top:3px}#hcf{display:block;height:100%;width:0;background:var(--acc)}
+#sub{position:absolute;left:0;right:0;bottom:12px;text-align:center;padding:8px 18px;margin:0 auto;max-width:900px;font-size:clamp(19px,3.8vw,28px);font-weight:500;background:var(--pan)}
+#sub:empty{display:none}
+#bar{position:absolute;left:0;right:0;bottom:0;height:5px;background:#3a4248;cursor:pointer}
+#fill{height:100%;width:0;background:var(--acc)}
+#ctl{display:flex;gap:10px;align-items:center;justify-content:center;padding:6px 10px 10px;font-size:24px}
+button{font:inherit;color:var(--ink);background:#2c353b;border:2px solid #56636b;border-radius:6px;padding:4px 14px;cursor:pointer;min-height:44px}
+button:focus-visible{outline:2px solid var(--acc);outline-offset:2px}
+#tm{min-width:90px;text-align:center}
+#start{position:absolute;inset:0;z-index:5;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:14px;background:rgba(20,24,28,.92);font-size:clamp(28px,6vw,46px);font-weight:700;text-align:center;padding:20px}
+#start small{font-size:.55em;font-weight:500;color:#b9c2c8}
+#start button{background:var(--acc);color:#1c2226;border-color:var(--acc);font-weight:700}
+</style>
+</head>
+<body>
+<div id="app">
+ <div id="v">
+  <div id="hud"><span id="hg">Marcha N</span><span id="hm"></span><span id="hv"></span><span>Embreagem<span id="hc"><i id="hcf"></i></span></span></div>
+  <div id="sub"></div>
+  <div id="bar"><div id="fill"></div></div>
+  <div id="start"><div>COMO FUNCIONA A CAIXA DE MARCHA</div><small>1 minuto, com narração · arraste para girar a câmera</small><button id="go">▶ INICIAR</button></div>
+ </div>
+ <div id="ctl">
+  <button id="pp" aria-label="Pausar ou continuar">⏸</button>
+  <button id="rs" aria-label="Reiniciar">↻</button>
+  <button id="vc" aria-label="Narração ligada ou desligada">🔊</button>
+  <span id="tm">0:00 / 1:00</span>
+ </div>
+</div>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+<script>
+const D=60;
+const SC=[
+ {s:0,e:12,say:"Quando o carro vai andar, o motor gira rápido, mas com pouca força. A caixa de marcha existe para transformar esse giro em força nas rodas."},
+ {s:12,e:27,say:"Para sair do lugar, pisa-se na embreagem, que desconecta o motor, e o câmbio engata a primeira. Uma engrenagem pequena move uma grande: o giro cai três vezes, e a força triplica."},
+ {s:27,e:44,say:"Com o carro ganhando velocidade, trocamos para a segunda e depois para a terceira. Os pares de engrenagem ficam mais parecidos, as rodas giram mais rápido, e a força diminui."},
+ {s:44,e:60,say:"Resumindo: marcha baixa dá muita força e pouca velocidade; marcha alta dá pouca força e muita velocidade. A caixa guarda as engrenagens, e o câmbio escolhe qual delas trabalha."}
+];
+// ---- modelo da caixa (função do tempo) ----
+const GE=[{ni:7,no:21},{ni:10,no:18},{ni:14,no:14}],GX=[-1.6,0,1.6],RAT=[3,1.8,1];
+const CX=[-2.9,-1.15,0.45,2.05],SH=[14,29,37],CL=[[13,15.8],[28,30.5],[36,38.5]];
+const EK=[[0,2.2],[3,2.2],[6,9],[9,9],[11,3],[15.8,3],[18,5],[26,8],[28,8],[29.5,5],[30.5,5.5],[35.5,9],[36,9],[37.5,6],[38.5,6],[43,9],[47,9],[50,6],[56,2.5],[60,2.2]];
+const ss=x=>x*x*(3-2*x);
+function interp(K,t){for(let i=1;i<K.length;i++)if(t<=K[i][0]){const a=K[i-1],b=K[i];return a[1]+(b[1]-a[1])*(t-a[0])/(b[0]-a[0])}return K[K.length-1][1]}
+const gearAt=t=>t<SH[0]?0:t<SH[1]?1:t<SH[2]?2:3;
+function pedal(t){let p=0;CL.forEach(([a,e])=>{const v=t<a?0:t<a+.6?(t-a)/.6:t<e?1:t<e+1?1-(t-e):0;p=Math.max(p,v)});return p}
+function collarX(t){let x=CX[0];for(let i=0;i<3;i++)if(t>=SH[i])x=CX[i]+(CX[i+1]-CX[i])*ss(Math.min(1,t-SH[i]));return x}
+const S={wi:2.2,wo:0,di:0,dO:0,de:0};
+function seekSim(t){const we=interp(EK,t),g=gearAt(t);S.wi=we;S.wo=g?we/RAT[g-1]:0}
+function step(t,dt){
+ const we=interp(EK,t),g=gearAt(t),c=1-pedal(t);
+ S.wi+=(c*we+(1-c)*S.wo*RAT[Math.max(g,1)-1]-S.wi)*(1-Math.exp(-dt*6));
+ const k=1-Math.exp(-dt*4);
+ S.wo+=g?c*(we/RAT[g-1]-S.wo)*k:-S.wo*k;
+ S.de+=we*dt;S.di+=S.wi*dt;S.dO+=S.wo*dt;
+}
+// ---- cena ----
+const box=document.getElementById('v');
+const renderer=new THREE.WebGLRenderer({antialias:true});
+renderer.setPixelRatio(Math.min(window.devicePixelRatio||1,2));
+box.insertBefore(renderer.domElement,box.firstChild);
+const scene=new THREE.Scene();scene.background=new THREE.Color(0x2b363c);scene.fog=new THREE.Fog(0x2b363c,22,48);
+const cam=new THREE.PerspectiveCamera(45,1,0.1,100);
+scene.add(new THREE.HemisphereLight(0xe6eef3,0x2a2a2a,0.95));
+const dl=new THREE.DirectionalLight(0xfff0d6,0.7);dl.position.set(4,9,8);scene.add(dl);
+const lamp=new THREE.PointLight(0xffd9a0,0.8,30);lamp.position.set(0,8,3);scene.add(lamp);
+const M=(c,o)=>new THREE.MeshStandardMaterial(Object.assign({color:c,flatShading:true,roughness:.55,metalness:.35},o||{}));
+const add=(g,m,x,y,z,p)=>{const o=new THREE.Mesh(g,m);o.position.set(x,y,z);(p||scene).add(o);return o};
+const FY=-3.2;
+// oficina: piso, parede, faixa, quadro de ferramentas, lâmpada, caixa, barril
+add(new THREE.PlaneGeometry(60,40),M(0x2a2d30,{flatShading:false}),0,FY,0).rotation.x=-Math.PI/2;
+add(new THREE.PlaneGeometry(60,16),M(0x3c4a52,{flatShading:false}),0,FY+8,-5);
+const hc=document.createElement('canvas');hc.width=64;hc.height=16;const hx=hc.getContext('2d');
+hx.fillStyle='#ffb020';hx.fillRect(0,0,64,16);hx.fillStyle='#16181a';
+for(let i=-1;i<5;i++){hx.beginPath();hx.moveTo(i*16,16);hx.lineTo(i*16+8,16);hx.lineTo(i*16+16,0);hx.lineTo(i*16+8,0);hx.fill()}
+const ht=new THREE.CanvasTexture(hc);ht.wrapS=THREE.RepeatWrapping;ht.repeat.set(24,1);
+add(new THREE.PlaneGeometry(24,0.6),new THREE.MeshBasicMaterial({map:ht}),0,FY+0.01,4.4).rotation.x=-Math.PI/2;
+add(new THREE.BoxGeometry(11,4.6,0.15),M(0x8a6d4b,{flatShading:false}),-3,2.6,-4.85);
+for(let i=0;i<7;i++){add(new THREE.BoxGeometry(0.16,1.2+(i%3)*0.4,0.08),M(0x1d2125),-7.4+i*1.25,2.7+(i%2)*0.2,-4.72);add(new THREE.BoxGeometry(0.5,0.22,0.08),M(0x1d2125),-7.4+i*1.25,3.5+(i%3)*0.3,-4.72)}
+add(new THREE.BoxGeometry(1.8,1.1,1),M(0xc23b22),8.2,FY+0.55,-2.6);
+add(new THREE.CylinderGeometry(0.75,0.75,2.2,16),M(0x2f5f86),-9.4,FY+1.1,-2.6);
+add(new THREE.CylinderGeometry(0.05,0.05,3,6),M(0x111111),0,9.4,3);
+add(new THREE.ConeGeometry(1.2,0.9,16,1,true),M(0x6f7b82,{side:2}),0,7.9,3);
+// engrenagens
+function gearGeo(n,r,w){const s=new THREE.Shape(),st=Math.PI*2/n,pts=[];
+ for(let i=0;i<n;i++)[[0,-.07],[.2,.07],[.5,.07],[.7,-.07]].forEach(([f,d])=>{const an=i*st+f*st,R=r+d;pts.push(new THREE.Vector2(Math.cos(an)*R,Math.sin(an)*R))});
+ s.setFromPoints(pts);const h=new THREE.Path();h.absarc(0,0,0.18,0,Math.PI*2,true);s.holes.push(h);
+ const g=new THREE.ExtrudeGeometry(s,{depth:w,bevelEnabled:false});g.translate(0,0,-w/2);g.rotateY(Math.PI/2);return g}
+const IDLE=new THREE.Color(0x6d6258),ACT=new THREE.Color(0xff8a1f);
+const inG=[],outG=[],outM=[],th0i=[],th0o=[];
+GE.forEach((e,i)=>{
+ const si=Math.PI*2/e.ni,so=Math.PI*2/e.no;
+ th0i.push(-Math.PI/2-.35*si);th0o.push(Math.PI/2-.85*so);
+ inG.push(add(gearGeo(e.ni,e.ni/14,0.4),M(0x3d9be0),GX[i],1,0));
+ const m=M(0x6d6258);outM.push(m);outG.push(add(gearGeo(e.no,e.no/14,0.4),m,GX[i],-1,0));
+});
+// eixos
+const cylX=(r,len,mat,x,y,z,p)=>{const g=new THREE.CylinderGeometry(r,r,len,24);g.rotateZ(Math.PI/2);return add(g,mat,x,y,z,p)};
+const inShaft=cylX(0.15,6.6,M(0x2f7fbf),-0.8,1,0);add(new THREE.BoxGeometry(0.6,0.07,0.07),M(0xffffff),-3,1.17,0,inShaft).position.set(-2.2,0.17,0);
+const outShaft=cylX(0.15,6.4,M(0xd9741a),0.7,-1,0);add(new THREE.BoxGeometry(0.6,0.07,0.07),M(0xffffff),3.2,-1,0,outShaft).position.set(2.5,0.17,0);
+const collar=cylX(0.42,0.4,M(0xffb020,{emissive:0x553300}),CX[0],-1,0);
+// carcaça transparente
+const hg=new THREE.BoxGeometry(5.4,5.2,3.5);
+const hous=add(hg,new THREE.MeshStandardMaterial({color:0xb9c6cf,transparent:true,opacity:.1,depthWrite:false}),0.25,-0.3,0);
+hous.add(new THREE.LineSegments(new THREE.EdgesGeometry(hg),new THREE.LineBasicMaterial({color:0xc9d1d6})));
+[-1.6,2.0].forEach(x=>add(new THREE.BoxGeometry(0.8,0.3,3),M(0xd9741a),x,-3.05,0));
+// alavanca do câmbio
+const lever=new THREE.Group();lever.position.set(0.25,2.3,0);scene.add(lever);
+const rod=new THREE.CylinderGeometry(0.07,0.07,1.8,10);rod.translate(0,0.9,0);add(rod,M(0xc9d1d6),0,0,0,lever);
+add(new THREE.SphereGeometry(0.24,16,12),M(0xc23b22),0,1.95,0,lever);
+// motor + volante + embreagem
+add(new THREE.BoxGeometry(1.6,3.2,1.6),M(0x3a4046),-6,-1.6,0);
+add(new THREE.BoxGeometry(2.2,2,2),M(0x5a6670),-6,1,0);add(new THREE.BoxGeometry(2.3,0.4,2.1),M(0xc23b22),-6,2.2,0);
+const pist=[-6.7,-6,-5.3].map(x=>add(new THREE.CylinderGeometry(0.22,0.22,0.9,12),M(0xc9d1d6),x,2.9,0));
+cylX(0.2,0.45,M(0x9aa4ab),-4.72,1,0);
+const fly=cylX(1,0.3,M(0x7b858b),-4.4,1,0);add(new THREE.BoxGeometry(0.4,0.25,0.25),M(0xffb020),0,0.75,0,fly);
+const disc=cylX(0.9,0.12,M(0x8a5a2a),-4.15,1,0);add(new THREE.BoxGeometry(0.2,0.25,0.25),M(0xffffff),0.05,0.65,0,disc);
+// transmissão até a roda
+cylX(0.15,1.2,M(0xd9741a),4.2,-1,0).scale.set(1,1,1);
+add(new THREE.BoxGeometry(0.9,0.9,1),M(0x6f7b82),4.2,-1,0);
+add(new THREE.BoxGeometry(0.5,2,0.5),M(0x3a4046),4.2,-2.2,0);
+const wheel=new THREE.Group();wheel.position.set(4.2,-1,1.3);scene.add(wheel);
+const axg=new THREE.CylinderGeometry(0.12,0.12,1.8,10);axg.rotateX(Math.PI/2);add(axg,M(0x9aa4ab),4.2,-1,0.4);
+wheel.add(new THREE.Mesh(new THREE.TorusGeometry(0.95,0.36,12,28),M(0x16181a,{flatShading:false})));
+const rg=new THREE.CylinderGeometry(0.62,0.62,0.3,24);rg.rotateX(Math.PI/2);add(rg,M(0xaab3b9),0,0,0,wheel);
+for(let i=0;i<5;i++){const a=i*Math.PI*2/5,lg=new THREE.CylinderGeometry(0.07,0.07,0.38,8);lg.rotateX(Math.PI/2);add(lg,M(0xffb020),Math.cos(a)*0.38,Math.sin(a)*0.38,0,wheel)}
+// rótulos
+const labs=[];
+function lab(t,x,y,z){const c=document.createElement('canvas');c.width=360;c.height=72;const tex=new THREE.CanvasTexture(c);
+ const sp=new THREE.Sprite(new THREE.SpriteMaterial({map:tex,depthTest:false,transparent:true}));sp.scale.set(2.9,0.58,1);sp.position.set(x,y,z);sp.renderOrder=10;scene.add(sp);
+ const draw=()=>{const g=c.getContext('2d');g.clearRect(0,0,360,72);g.fillStyle='rgba(20,24,28,.88)';g.fillRect(0,0,360,72);g.fillStyle='#ffb020';g.fillRect(0,0,8,72);
+  g.fillStyle='#f2efe6';g.font='700 40px "Barlow Condensed","Arial Narrow",sans-serif';g.textAlign='center';g.textBaseline='middle';g.fillText(t,184,38);tex.needsUpdate=true};
+ draw();labs.push(draw)}
+lab('MOTOR',-6,4.4,0);lab('EMBREAGEM',-3.9,2.8,0);lab('EIXO DO MOTOR',-1.6,3.0,0);lab('CÂMBIO (ALAVANCA)',0.25,5.0,0);lab('EIXO DAS RODAS',3.0,-2.1,0.8);lab('RODA',4.2,1.6,1.4);
+if(document.fonts)document.fonts.load('700 40px "Barlow Condensed"').then(()=>labs.forEach(f=>f())).catch(()=>{});
+// ---- câmera ----
+const K=[{p:[-0.5,1.8,15.5],l:[-0.3,-0.2,0]},{p:[0,0.4,8.6],l:[-0.3,-0.3,0]},{p:[1.2,0.8,8.2],l:[0.9,-0.5,0]},{p:[2.5,1,12.5],l:[1.2,-0.5,0]}];
+let dyaw=0,dpitch=0,drag=false,px=0,py=0;
+const sceneAt=t=>{let i=0;SC.forEach((c,k)=>{if(t>=c.s)i=k});return i};
+function place(t,si){
+ const b=si===0?1:ss(Math.min(1,(t-SC[si].s)/1.8)),A=K[Math.max(si-1,0)],B=K[si];
+ const mix=(a,c)=>a.map((v,i)=>v+(c[i]-v)*b),p=mix(A.p,B.p),l=mix(A.l,B.l),m=Math.max(1,1.4/cam.aspect);
+ const vx=(p[0]-l[0])*m,vy=(p[1]-l[1])*m,vz=(p[2]-l[2])*m,yaw=dyaw+Math.sin(t*0.35)*0.05,c=Math.cos(yaw),s=Math.sin(yaw),len=Math.hypot(vx,vy,vz);
+ cam.position.set(l[0]+vx*c+vz*s,l[1]+vy+dpitch*len*0.6,l[2]-vx*s+vz*c);cam.lookAt(l[0],l[1],l[2]);
+}
+// ---- UI ----
+const $=id=>document.getElementById(id),sub=$('sub'),pp=$('pp');
+let now=0,playing=false,last=0,voice=true,spoken=-1;
+function render(t,dt){
+ const si=sceneAt(t),c=SC[si];if(dt>0)step(t,dt);
+ const pd=pedal(t),cx=collarX(t),g=gearAt(t);
+ GE.forEach((e,i)=>{inG[i].rotation.x=th0i[i]+S.di;outG[i].rotation.x=th0o[i]-S.di*e.ni/e.no;
+  const en=Math.max(0,Math.min(1,1-Math.abs(cx-(GX[i]+0.45))/0.5));outM[i].color.copy(IDLE).lerp(ACT,en);outM[i].emissive.setRGB(0.4*en,0.15*en,0)});
+ inShaft.rotation.x=S.di;outShaft.rotation.x=-S.dO;fly.rotation.x=S.de;disc.rotation.x=S.di;disc.position.x=-4.15+0.6*pd;
+ collar.position.x=cx;lever.rotation.z=-(cx-0.45)*0.12;wheel.rotation.z=-S.dO;
+ pist.forEach((p,i)=>p.position.y=2.9+0.25*Math.sin(S.de*2+i*2.09));
+ place(t,si);renderer.render(scene,cam);
+ const we=interp(EK,t);
+ $('hg').textContent=g?'Marcha '+g+'ª · '+RAT[g-1].toFixed(1).replace('.',',')+':1':'Marcha N (ponto morto)';
+ $('hm').textContent='Motor '+(Math.round((600+(we-2)*500)/50)*50)+' rpm';
+ $('hv').textContent='Roda '+Math.round(S.wo*6)+' km/h';$('hcf').style.width=(pd*100)+'%';
+ sub.textContent=(t>=c.s+.4&&t<c.e-.3)?c.say:'';
+ $('fill').style.width=(t/D*100)+'%';$('tm').textContent='0:'+String(Math.floor(t)).padStart(2,'0')+' / 1:00';
+ if(playing&&voice&&si!==spoken&&t>=c.s+.5&&'speechSynthesis' in window){
+  spoken=si;speechSynthesis.cancel();const u=new SpeechSynthesisUtterance(c.say);u.lang='pt-BR';u.rate=1.05;speechSynthesis.speak(u);
+ }
+}
+function frame(ts){
+ const dt=Math.min(0.1,(ts-last)/1000);last=ts;
+ if(playing){now+=dt;if(now>=D){now=D;playing=false;pp.textContent='▶'}}
+ render(now,playing?dt:0);requestAnimationFrame(frame);
+}
+function resize(){const w=box.clientWidth,h=box.clientHeight;renderer.setSize(w,h,false);cam.aspect=w/h;cam.updateProjectionMatrix()}
+window.addEventListener('resize',resize);resize();
+function stopVoice(){if('speechSynthesis' in window)speechSynthesis.cancel();spoken=-1}
+pp.onclick=()=>{playing=!playing;pp.textContent=playing?'⏸':'▶';if(!playing)stopVoice();else if(now>=D){now=0;seekSim(0)}};
+$('rs').onclick=()=>{stopVoice();now=0;seekSim(0);playing=true;pp.textContent='⏸'};
+$('vc').onclick=function(){voice=!voice;this.textContent=voice?'🔊':'🔇';if(!voice)stopVoice()};
+$('bar').onclick=e=>{const r=e.currentTarget.getBoundingClientRect();now=(e.clientX-r.left)/r.width*D;seekSim(now);stopVoice()};
+$('go').onclick=()=>{$('start').remove();now=0;seekSim(0);playing=true;stopVoice()};
+const cv=renderer.domElement;
+cv.addEventListener('pointerdown',e=>{drag=true;px=e.clientX;py=e.clientY;cv.setPointerCapture(e.pointerId)});
+cv.addEventListener('pointermove',e=>{if(!drag)return;dyaw=Math.max(-0.9,Math.min(0.9,dyaw-(e.clientX-px)*0.005));dpitch=Math.max(-0.4,Math.min(0.5,dpitch+(e.clientY-py)*0.004));px=e.clientX;py=e.clientY});
+cv.addEventListener('pointerup',()=>{drag=false});cv.addEventListener('dblclick',()=>{dyaw=0;dpitch=0});
+requestAnimationFrame(ts=>{last=ts;frame(ts)});
+</script>
+</body>
+</html>

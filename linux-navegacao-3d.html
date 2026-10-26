@@ -1,0 +1,209 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Navegação de arquivos no Linux (3D)</title>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=VT323&display=swap">
+<style>
+:root{--g:#39ff7a;--gd:#1e9b4c;--ink:#c9ffd9;box-sizing:border-box;padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}
+html{scroll-padding-top:env(safe-area-inset-top,0px)}
+html,body{height:100%;margin:0;background:#010a05;color:var(--g);font-family:'VT323',ui-monospace,Menlo,Consolas,monospace}
+#app{height:100%;display:flex;flex-direction:column}
+#v{flex:1;position:relative;overflow:hidden;min-height:0;touch-action:none}
+canvas{display:block;width:100%;height:100%}
+#sub{position:absolute;left:0;right:0;bottom:14px;text-align:center;padding:0 20px;font-size:clamp(20px,3.8vw,30px);color:var(--ink);text-shadow:0 0 6px #000,0 0 10px #000,0 0 4px rgba(57,255,122,.6)}
+#bar{position:absolute;left:0;right:0;bottom:0;height:5px;background:#0a3a1c;cursor:pointer}
+#fill{height:100%;width:0;background:var(--g);box-shadow:0 0 8px var(--g)}
+#ctl{display:flex;gap:10px;align-items:center;justify-content:center;padding:6px 10px 10px;font-size:24px}
+button{font:inherit;color:var(--g);background:#031a0c;border:2px solid var(--gd);border-radius:6px;padding:4px 14px;cursor:pointer;min-height:44px}
+button:focus-visible{outline:2px solid #ffd24a;outline-offset:2px}
+#tm{min-width:90px;text-align:center}
+#start{position:absolute;inset:0;z-index:5;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:14px;background:rgba(1,10,5,.9);font-size:clamp(26px,6vw,44px);text-align:center;padding:20px}
+#start small{font-size:.6em;color:var(--gd)}
+</style>
+</head>
+<body>
+<div id="app">
+ <div id="v">
+  <div id="sub"></div>
+  <div id="bar"><div id="fill"></div></div>
+  <div id="start"><div>NAVEGAÇÃO DE ARQUIVOS NO LINUX · 3D</div><small>toque para iniciar · arraste para girar a câmera</small><button id="go">▶ INICIAR</button></div>
+ </div>
+ <div id="ctl">
+  <button id="pp" aria-label="Pausar ou continuar">⏸</button>
+  <button id="rs" aria-label="Reiniciar">↻</button>
+  <button id="vc" aria-label="Narração ligada ou desligada">🔊</button>
+  <span id="tm">0:00 / 1:00</span>
+ </div>
+</div>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+<script>
+const D=60;
+const SC=[
+ {s:0,e:15,say:"No Linux, tudo é tratado como arquivo, até os dispositivos! E tudo começa no diretório raiz, representado por uma barra: o /."},
+ {s:15,e:30,say:"Para navegar, usamos caminhos. O absoluto é o endereço completo, a partir da raiz. O relativo parte de onde você está agora."},
+ {s:30,e:50,say:"Guarde três comandos: pwd diz onde você está, ls mostra o que há na pasta, e cd te leva para um novo diretório."},
+ {s:50,e:60,say:"Pronto para explorar o terminal? Pratique esses comandos e domine o Linux. Até a próxima!"}
+];
+const L=[
+ [0,2,'c','tree / -L 1'],
+ [0,4.2,'o','/ (Raiz)'],[0,4.8,'o','├── bin/'],[0,5.4,'o','├── dev/   ← dispositivos também são arquivos'],
+ [0,6.0,'o','├── etc/'],[0,6.6,'o','├── home/'],[0,7.2,'o','├── usr/'],[0,7.8,'o','└── ...'],
+ [1,16,'c','cd /home/user/documentos'],[1,19,'n','[Caminho Absoluto: começa na raiz /]'],
+ [1,22,'c','cd ..'],[1,24,'c','cd documentos'],[1,26.5,'n','[Caminho Relativo: parte de onde você está]'],
+ [2,31,'c','pwd'],[2,33,'o','/home/user'],[2,35,'c','ls'],[2,37,'o','projetos/  notas.txt'],[2,40,'c','cd projetos'],
+ [3,51,'c','exit'],[3,53,'o','CONNECTION CLOSED.']
+];
+const COL={c:'#39ff7a',o:'#c9ffd9',n:'#ffd24a'};
+// ---------- cena 3D ----------
+const box=document.getElementById('v');
+const renderer=new THREE.WebGLRenderer({antialias:true});
+renderer.setPixelRatio(Math.min(window.devicePixelRatio||1,2));
+box.insertBefore(renderer.domElement,box.firstChild);
+const scene=new THREE.Scene();
+scene.background=new THREE.Color(0x010a05);
+scene.fog=new THREE.Fog(0x010a05,9,34);
+const cam=new THREE.PerspectiveCamera(45,1,0.1,100);
+scene.add(new THREE.AmbientLight(0x4a6a58,0.9));
+const dl=new THREE.DirectionalLight(0x9fffc4,0.6);dl.position.set(3,5,6);scene.add(dl);
+const glow=new THREE.PointLight(0x39ff7a,1.4,9);glow.position.set(0,-0.2,1.8);scene.add(glow);
+const grid=new THREE.GridHelper(80,80,0x1e9b4c,0x0b3d20);grid.position.y=-1.7;scene.add(grid);
+// mesa
+const desk=new THREE.Mesh(new THREE.BoxGeometry(10,0.2,4.6),new THREE.MeshStandardMaterial({color:0x0c1f15,roughness:.8}));
+desk.position.set(-0.6,-1.6,0.8);scene.add(desk);
+// monitor CRT
+const mon=new THREE.Group();mon.position.set(0,-0.2,0);scene.add(mon);
+const plastic=new THREE.MeshStandardMaterial({color:0x1b2b22,roughness:.7});
+const bez=new THREE.Mesh(new THREE.BoxGeometry(3.5,2.7,0.5),plastic);mon.add(bez);
+const back=new THREE.Mesh(new THREE.BoxGeometry(2.6,2.0,1.6),plastic);back.position.z=-1.05;mon.add(back);
+const foot=new THREE.Mesh(new THREE.BoxGeometry(1.6,0.12,1.2),plastic);foot.position.set(0,-1.36,-0.2);mon.add(foot);
+// tela com canvas
+const TW=1024,TH=736,tc=document.createElement('canvas');tc.width=TW;tc.height=TH;
+const tx=tc.getContext('2d');const tex=new THREE.CanvasTexture(tc);tex.anisotropy=4;
+const screen=new THREE.Mesh(new THREE.PlaneGeometry(2.9,2.08),new THREE.MeshBasicMaterial({map:tex}));
+screen.position.z=0.26;mon.add(screen);
+// teclado
+const kb=new THREE.Mesh(new THREE.BoxGeometry(2.2,0.1,0.7),plastic);kb.position.set(0.4,-1.45,1.6);scene.add(kb);
+// robô
+function neon(w,h,d,x,y,z,parent){
+ const g=new THREE.BoxGeometry(w,h,d);
+ const m=new THREE.Mesh(g,new THREE.MeshBasicMaterial({color:0x04200f,polygonOffset:true,polygonOffsetFactor:1,polygonOffsetUnits:1}));
+ const l=new THREE.LineSegments(new THREE.EdgesGeometry(g),new THREE.LineBasicMaterial({color:0x39ff7a}));
+ const o=new THREE.Group();o.add(m,l);o.position.set(x,y,z);parent.add(o);return o;
+}
+const bot=new THREE.Group();bot.position.set(-2.7,-1.5,1.3);bot.rotation.y=0.35;bot.scale.setScalar(1.2);scene.add(bot);
+const inner=new THREE.Group();bot.add(inner);
+neon(0.8,0.9,0.5,0,1.15,0,inner);neon(0.4,0.25,0.02,0,1.2,0.26,inner);
+neon(0.7,0.55,0.55,0,1.95,0,inner);
+[-0.2,0.2].forEach(x=>{neon(0.18,0.7,0.18,x,0.35,0,inner);neon(0.28,0.08,0.34,x,0.04,0.06,inner)});
+const eyes=new THREE.Group();inner.add(eyes);eyes.position.set(0,1.98,0);
+const em=new THREE.MeshBasicMaterial({color:0x39ff7a});
+[-0.17,0.17].forEach(x=>{const e=new THREE.Mesh(new THREE.BoxGeometry(0.14,0.2,0.04),em);e.position.set(x,0,0.28);eyes.add(e)});
+const ant=new THREE.Line(new THREE.BufferGeometry().setFromPoints([new THREE.Vector3(0,2.225,0),new THREE.Vector3(0,2.5,0)]),new THREE.LineBasicMaterial({color:0x39ff7a}));inner.add(ant);
+const ball=new THREE.Mesh(new THREE.SphereGeometry(0.06,10,10),em);ball.position.y=2.55;inner.add(ball);
+function mkArm(x){const p=new THREE.Group();p.position.set(x,1.5,0);inner.add(p);neon(0.14,0.7,0.14,0,-0.35,0,p);neon(0.2,0.14,0.2,0,-0.78,0,p);return p}
+const armR=mkArm(0.5),armL=mkArm(-0.5);
+const lg=new THREE.CylinderGeometry(0.02,0.02,4,6);lg.translate(0,-2.9,0);
+const laser=new THREE.Mesh(lg,new THREE.MeshBasicMaterial({color:0xff4d6d}));armR.add(laser);
+// ---------- terminal na tela ----------
+let tcache='';
+function drawTerm(t,si){
+ const lines=[];
+ L.filter(l=>l[0]===si&&t>=l[1]).forEach(l=>{
+  if(l[2]==='c'){const n=Math.min(l[3].length,Math.floor((t-l[1])*16));lines.push(['$ '+l[3].slice(0,n),COL.c])}
+  else lines.push([l[3],COL[l[2]]]);
+ });
+ const blink=((t*2)|0)%2===0;
+ const key=JSON.stringify(lines)+blink+(document.fonts&&document.fonts.check('40px VT323'));
+ if(key===tcache)return;tcache=key;
+ tx.fillStyle='#021008';tx.fillRect(0,0,TW,TH);
+ tx.font='52px VT323, monospace';tx.textBaseline='top';tx.shadowBlur=10;
+ let y=34;
+ lines.forEach(l=>{tx.fillStyle=l[1];tx.shadowColor=l[1];tx.fillText(l[0],40,y);y+=60});
+ tx.fillStyle=COL.c;tx.shadowColor=COL.c;tx.fillText('$ ',40,y);
+ if(blink)tx.fillRect(40+tx.measureText('$ ').width,y+6,24,42);
+ tx.shadowBlur=0;tx.fillStyle='rgba(0,0,0,.28)';
+ for(let yy=0;yy<TH;yy+=3)tx.fillRect(0,yy,TW,1);
+ tex.needsUpdate=true;
+}
+// ---------- câmera ----------
+const K=[
+ {p:[0.3,0.5,7.2],l:[-0.9,-0.1,0.4]},{p:[1.2,0.3,5.4],l:[0.2,-0.2,0.5]},
+ {p:[0.5,-0.1,4.0],l:[0.1,-0.2,0.2]},{p:[-1.2,0.2,5.8],l:[-1.6,-0.3,0.6]}
+];
+let dyaw=0,dpitch=0,drag=false,px=0,py=0;
+const ss=x=>x*x*(3-2*x);
+function sceneAt(t){let i=0;SC.forEach((c,k)=>{if(t>=c.s)i=k});return i}
+function place(t,si){
+ const b=si===0?1:ss(Math.min(1,(t-SC[si].s)/1.6)),A=K[Math.max(si-1,0)],B=K[si];
+ const mix=(a,c)=>a.map((v,i)=>v+(c[i]-v)*b);
+ const p=mix(A.p,B.p),l=mix(A.l,B.l);
+ const asp=cam.aspect,m=Math.max(1,1.35/asp);
+ let vx=(p[0]-l[0])*m,vy=(p[1]-l[1])*m,vz=(p[2]-l[2])*m;
+ const yaw=dyaw+Math.sin(t*0.4)*0.06,c=Math.cos(yaw),s=Math.sin(yaw);
+ const nx=vx*c+vz*s,nz=-vx*s+vz*c;
+ const len=Math.hypot(vx,vy,vz);
+ cam.position.set(l[0]+nx,l[1]+vy+dpitch*len*0.6,l[2]+nz);
+ cam.lookAt(l[0],l[1],l[2]);
+}
+const jump=(t,t0)=>(t>=t0&&t<t0+1.2)?Math.sin(Math.PI*(t-t0)/1.2):0;
+const cur={rz:0.15,rx:0,ry:0,lz:-0.15,lx:0,y:0};
+function animate3D(t,si,dt){
+ const k=1-Math.exp(-dt*9);
+ let T={rz:0.15,rx:0,ry:0,lz:-0.15,lx:0,y:0};
+ let lz=false;
+ if(si===0){T.rz=1.75;T.ry=0.07;lz=t>1.5;T.y=0.03*Math.sin(t*2)}
+ else if(si===1){const j=jump(t,18.6)+jump(t,26.1);T.y=0.8*j;T.rz=0.15+2.1*(j>0.02?1:0);T.lz=-T.rz}
+ else if(si===2){T.rx=-1.2+0.25*Math.sin(t*14);T.lx=-1.2+0.25*Math.sin(t*14+Math.PI);T.rz=0;T.lz=0;T.y=0.03*Math.sin(t*14)}
+ else{if(t<57){T.rz=2.7+0.3*Math.sin(t*10)}else T.rz=0.15}
+ for(const n in T)cur[n]+=(T[n]-cur[n])*k;
+ armR.rotation.set(cur.rx,cur.ry,cur.rz);armL.rotation.set(cur.lx,0,cur.lz);
+ inner.position.y=cur.y;laser.visible=lz;
+ const bl=(t%4)>3.85?0.1:1;eyes.scale.y=bl;
+ bot.rotation.y=0.35+(si===3&&t<57?0.15*Math.sin(t*1.5):0);
+ // TV desligando
+ const p=(t-57.4)/1.5;
+ if(p>0){
+  const sy=p<.7?1-(p/.7)*.99:.01,sx=p>.7?Math.max(0.001,1-(p-.7)/.3):1;
+  screen.scale.set(sx,sy,1);screen.material.color.setScalar(1+Math.min(p,.7)*3);
+  glow.intensity=1.4*Math.max(0,1-p);screen.visible=p<1.0;
+ }else{screen.scale.set(1,1,1);screen.material.color.setScalar(1);glow.intensity=1.4;screen.visible=true}
+}
+// ---------- timeline / UI ----------
+const sub=document.getElementById('sub'),fill=document.getElementById('fill'),tm=document.getElementById('tm'),pp=document.getElementById('pp');
+let now=0,playing=false,last=0,voice=true,spoken=-1;
+function render(t,dt){
+ const si=sceneAt(t),c=SC[si];
+ drawTerm(t,si);animate3D(t,si,dt);place(t,si);renderer.render(scene,cam);
+ sub.textContent=(t>=c.s+.4&&t<c.e-.3)?c.say:'';
+ fill.style.width=(t/D*100)+'%';
+ tm.textContent='0:'+String(Math.floor(t)).padStart(2,'0')+' / 1:00';
+ if(playing&&voice&&si!==spoken&&t>=c.s+.5&&'speechSynthesis' in window){
+  spoken=si;speechSynthesis.cancel();
+  const u=new SpeechSynthesisUtterance(c.say);u.lang='pt-BR';u.rate=1.05;speechSynthesis.speak(u);
+ }
+}
+function frame(ts){
+ const dt=Math.min(0.1,(ts-last)/1000);last=ts;
+ if(playing){now+=dt;if(now>=D){now=D;playing=false;pp.textContent='▶'}}
+ render(now,dt);requestAnimationFrame(frame);
+}
+function resize(){const w=box.clientWidth,h=box.clientHeight;renderer.setSize(w,h,false);cam.aspect=w/h;cam.updateProjectionMatrix()}
+window.addEventListener('resize',resize);resize();
+if(document.fonts)document.fonts.load('40px VT323').then(()=>{tcache=''}).catch(()=>{});
+function stopVoice(){if('speechSynthesis' in window)speechSynthesis.cancel();spoken=-1}
+pp.onclick=()=>{playing=!playing;pp.textContent=playing?'⏸':'▶';if(!playing)stopVoice();else if(now>=D)now=0};
+document.getElementById('rs').onclick=()=>{stopVoice();now=0;playing=true;pp.textContent='⏸'};
+document.getElementById('vc').onclick=function(){voice=!voice;this.textContent=voice?'🔊':'🔇';if(!voice)stopVoice()};
+document.getElementById('bar').onclick=e=>{const r=e.currentTarget.getBoundingClientRect();now=(e.clientX-r.left)/r.width*D;stopVoice()};
+document.getElementById('go').onclick=()=>{document.getElementById('start').remove();now=0;playing=true;stopVoice()};
+const cv=renderer.domElement;
+cv.addEventListener('pointerdown',e=>{drag=true;px=e.clientX;py=e.clientY;cv.setPointerCapture(e.pointerId)});
+cv.addEventListener('pointermove',e=>{if(!drag)return;dyaw=Math.max(-0.9,Math.min(0.9,dyaw-(e.clientX-px)*0.005));dpitch=Math.max(-0.4,Math.min(0.5,dpitch+(e.clientY-py)*0.004));px=e.clientX;py=e.clientY});
+cv.addEventListener('pointerup',()=>{drag=false});
+cv.addEventListener('dblclick',()=>{dyaw=0;dpitch=0});
+requestAnimationFrame(ts=>{last=ts;frame(ts)});
+</script>
+</body>
+</html>

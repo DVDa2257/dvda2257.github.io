@@ -1,0 +1,153 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Navegação de arquivos no Linux</title>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=VT323&display=swap">
+<style>
+:root{--bg:#021008;--g:#39ff7a;--gd:#1e9b4c;--amber:#ffd24a;--ink:#c9ffd9;
+box-sizing:border-box;padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}
+html{scroll-padding-top:env(safe-area-inset-top,0px)}
+html,body{height:100%;margin:0;background:#000;color:var(--g);font-family:'VT323',ui-monospace,Menlo,Consolas,monospace}
+#app{height:100%;display:flex;flex-direction:column;background:#000}
+#crt{flex:1;position:relative;overflow:hidden;background:radial-gradient(ellipse at center,#05220f 0%,var(--bg) 70%,#000 100%);
+border-radius:18px;margin:8px;box-shadow:inset 0 0 60px rgba(0,0,0,.9),0 0 18px rgba(57,255,122,.18);transform-origin:center}
+#crt::after{content:"";position:absolute;inset:0;pointer-events:none;
+background:repeating-linear-gradient(to bottom,rgba(0,0,0,.28) 0 1px,transparent 1px 3px);animation:fl 5s infinite}
+@keyframes fl{0%,100%{opacity:.85}50%{opacity:1}}
+@media (prefers-reduced-motion:reduce){#crt::after{animation:none}}
+.scr{position:absolute;inset:0;display:flex;flex-direction:row;gap:12px;padding:16px 18px 70px;text-shadow:0 0 6px rgba(57,255,122,.7)}
+#botbox{flex:0 0 34%;display:flex;align-items:center;justify-content:center}
+#bot{width:100%;max-height:100%;overflow:visible}
+#bot *{stroke:var(--g);stroke-width:3;fill:none;stroke-linecap:round;stroke-linejoin:round;filter:drop-shadow(0 0 3px var(--g))}
+#bot .f{fill:var(--g)}
+#eyes{animation:bl 4s infinite;transform-origin:150px 62px}
+@keyframes bl{0%,94%,100%{transform:scaleY(1)}97%{transform:scaleY(.1)}}
+#term{flex:1;font-size:clamp(20px,4.6vw,34px);line-height:1.25;white-space:pre-wrap;overflow:hidden;align-self:center;max-height:100%}
+.n{color:var(--amber);text-shadow:0 0 6px rgba(255,210,74,.6)}
+.o{color:var(--ink)}
+.cur{animation:cu 1s steps(1) infinite}
+@keyframes cu{50%{opacity:0}}
+#sub{position:absolute;left:0;right:0;bottom:16px;text-align:center;padding:0 22px;font-size:clamp(20px,3.8vw,28px);color:var(--ink);min-height:2.4em}
+#bar{position:absolute;left:0;right:0;bottom:0;height:5px;background:#0a3a1c;cursor:pointer}
+#fill{height:100%;width:0;background:var(--g);box-shadow:0 0 8px var(--g)}
+#ctl{display:flex;gap:10px;align-items:center;justify-content:center;padding:6px 10px 10px;font-size:24px}
+button{font:inherit;color:var(--g);background:#031a0c;border:2px solid var(--gd);border-radius:6px;padding:4px 14px;cursor:pointer;min-height:44px}
+button:focus-visible{outline:2px solid var(--amber);outline-offset:2px}
+#tm{min-width:90px;text-align:center}
+#start{position:absolute;inset:0;z-index:5;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:14px;background:rgba(2,16,8,.92);font-size:clamp(26px,6vw,44px);text-align:center;padding:20px}
+#start small{font-size:.6em;color:var(--gd)}
+@media (max-aspect-ratio:1/1){.scr{flex-direction:column;padding-bottom:80px}#botbox{flex:0 0 30%}#term{align-self:stretch}}
+</style>
+</head>
+<body>
+<div id="app">
+<div id="crt">
+ <div class="scr">
+  <div id="botbox">
+   <svg id="bot" viewBox="0 0 300 300" aria-hidden="true">
+    <g id="body">
+     <line x1="150" y1="14" x2="150" y2="32"/><circle cx="150" cy="10" r="5" class="f"/>
+     <rect x="100" y="32" width="100" height="70" rx="10"/>
+     <g id="eyes"><rect x="120" y="52" width="14" height="20" class="f"/><rect x="166" y="52" width="14" height="20" class="f"/></g>
+     <line x1="128" y1="90" x2="172" y2="90"/>
+     <rect x="110" y="112" width="80" height="90" rx="8"/>
+     <text x="150" y="168" text-anchor="middle" class="f" style="font-size:34px;stroke:none;font-family:'VT323',monospace">&gt;_</text>
+     <line x1="150" y1="102" x2="150" y2="112"/>
+     <line x1="110" y1="124" x2="82" y2="176"/><circle cx="82" cy="180" r="6"/>
+     <line x1="130" y1="202" x2="130" y2="262"/><line x1="170" y1="202" x2="170" y2="262"/>
+     <line x1="116" y1="262" x2="144" y2="262"/><line x1="156" y1="262" x2="184" y2="262"/>
+     <g id="arm"><line x1="190" y1="124" x2="190" y2="176"/><circle cx="190" cy="180" r="6"/>
+      <line id="laser" x1="190" y1="188" x2="190" y2="290" style="stroke:#ff4d6d;filter:drop-shadow(0 0 5px #ff4d6d);opacity:0"/></g>
+    </g>
+   </svg>
+  </div>
+  <div id="term"></div>
+ </div>
+ <div id="sub"></div>
+ <div id="bar"><div id="fill"></div></div>
+ <div id="start"><div>NAVEGAÇÃO DE ARQUIVOS NO LINUX</div><small>toque para iniciar (1 min, com narração)</small><button id="go">▶ INICIAR</button></div>
+</div>
+<div id="ctl">
+ <button id="pp" aria-label="Pausar ou continuar">⏸</button>
+ <button id="rs" aria-label="Reiniciar">↻</button>
+ <button id="vc" aria-label="Narração ligada ou desligada">🔊</button>
+ <span id="tm">0:00 / 1:00</span>
+</div>
+</div>
+<script>
+const D=60;
+const SC=[
+ {s:0,e:15,say:"No Linux, tudo é tratado como arquivo, até os dispositivos! E tudo começa no diretório raiz, representado por uma barra: o /."},
+ {s:15,e:30,say:"Para navegar, usamos caminhos. O absoluto é o endereço completo, a partir da raiz. O relativo parte de onde você está agora."},
+ {s:30,e:50,say:"Guarde três comandos: pwd diz onde você está, ls mostra o que há na pasta, e cd te leva para um novo diretório."},
+ {s:50,e:60,say:"Pronto para explorar o terminal? Pratique esses comandos e domine o Linux. Até a próxima!"}
+];
+// [cena, tempo, tipo, texto]
+const L=[
+ [0,2,'c','tree / -L 1'],
+ [0,4.2,'o','/ (Raiz)'],[0,4.8,'o','├── bin/'],[0,5.4,'o','├── dev/   ← dispositivos também são arquivos'],
+ [0,6.0,'o','├── etc/'],[0,6.6,'o','├── home/'],[0,7.2,'o','├── usr/'],[0,7.8,'o','└── ...'],
+ [1,16,'c','cd /home/user/documentos'],
+ [1,19,'n','[Caminho Absoluto: começa na raiz /]'],
+ [1,22,'c','cd ..'],[1,24,'c','cd documentos'],
+ [1,26.5,'n','[Caminho Relativo: parte de onde você está]'],
+ [2,31,'c','pwd'],[2,33,'o','/home/user'],
+ [2,35,'c','ls'],[2,37,'o','projetos/  notas.txt'],
+ [2,40,'c','cd projetos'],
+ [3,51,'c','exit'],[3,53,'o','CONNECTION CLOSED.']
+];
+const term=document.getElementById('term'),sub=document.getElementById('sub');
+const arm=document.getElementById('arm'),laser=document.getElementById('laser'),body=document.getElementById('body');
+const crt=document.getElementById('crt'),fill=document.getElementById('fill'),tm=document.getElementById('tm');
+let now=0,playing=false,last=0,voice=true,spoken=-1,cache='';
+const esc=s=>s.replace(/&/g,'&amp;').replace(/</g,'&lt;');
+const jump=(t,t0)=>(t>=t0&&t<t0+1.2)?-34*Math.sin(Math.PI*(t-t0)/1.2):0;
+function sceneAt(t){let i=0;SC.forEach((c,k)=>{if(t>=c.s)i=k});return i}
+function render(t){
+ const si=sceneAt(t);let h='';
+ L.filter(l=>l[0]===si&&t>=l[1]).forEach(l=>{
+  if(l[2]==='c'){const n=Math.min(l[3].length,Math.floor((t-l[1])*16));h+='<span>$ '+esc(l[3].slice(0,n))+'</span>\n'}
+  else h+='<span class="'+l[2]+'">'+esc(l[3])+'</span>\n';
+ });
+ h+='$ <span class="cur">█</span>';
+ if(h!==cache){term.innerHTML=h;cache=h}
+ const c=SC[si];sub.textContent=(t>=c.s+.4&&t<c.e-.3)?c.say:'';
+ // robô
+ let a=0,y=0,lz=0;
+ if(si===0){a=-135;lz=t>1.5?1:0;y=2*Math.sin(t*2)}
+ else if(si===1){a=-40;y=jump(t,18.6)+jump(t,26.1)}
+ else if(si===2){a=-30+10*Math.sin(t*12);y=2*Math.sin(t*14)}
+ else{a=(t<57)?-150+22*Math.sin(t*10):-10;y=0}
+ arm.setAttribute('transform','rotate('+a+' 190 124)');
+ laser.style.opacity=lz;body.setAttribute('transform','translate(0 '+y+')');
+ // TV desligando
+ const p=(t-57.4)/1.5;
+ if(p>0){const sy=p<.7?1-(p/.7)*.99:.01,sx=p>.7?Math.max(0,1-(p-.7)/.3):1;
+  crt.style.transform='scale('+sx+','+sy+')';crt.style.filter='brightness('+(1+Math.min(p,.7)*3)+')'}
+ else{crt.style.transform='';crt.style.filter=''}
+ fill.style.width=(t/D*100)+'%';
+ const s=Math.floor(t);tm.textContent='0:'+String(s).padStart(2,'0')+' / 1:00';
+ // narração
+ if(playing&&voice&&si!==spoken&&t>=c.s+.5&&'speechSynthesis' in window){
+  spoken=si;speechSynthesis.cancel();
+  const u=new SpeechSynthesisUtterance(c.say);u.lang='pt-BR';u.rate=1.05;speechSynthesis.speak(u);
+ }
+}
+function frame(ts){
+ if(playing){now+=(ts-last)/1000;if(now>=D){now=D;playing=false;pp.textContent='▶'}}
+ last=ts;render(now);requestAnimationFrame(frame);
+}
+function stopVoice(){if('speechSynthesis' in window)speechSynthesis.cancel();spoken=-1}
+const pp=document.getElementById('pp');
+function toggle(){playing=!playing;pp.textContent=playing?'⏸':'▶';if(!playing)stopVoice();else if(now>=D){now=0}}
+pp.onclick=toggle;
+document.getElementById('rs').onclick=()=>{stopVoice();now=0;playing=true;pp.textContent='⏸'};
+document.getElementById('vc').onclick=function(){voice=!voice;this.textContent=voice?'🔊':'🔇';if(!voice)stopVoice()};
+document.getElementById('bar').onclick=e=>{const r=e.currentTarget.getBoundingClientRect();now=(e.clientX-r.left)/r.width*D;stopVoice()};
+document.getElementById('go').onclick=()=>{document.getElementById('start').remove();now=0;playing=true;stopVoice()};
+requestAnimationFrame(ts=>{last=ts;frame(ts)});
+</script>
+</body>
+</html>
