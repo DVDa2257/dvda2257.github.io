@@ -29,6 +29,7 @@ footer{margin-top:28px;color:var(--mute);font-size:17px}
   <a class="card" href="caixa-de-marcha-3d.html"><b>Como funciona a caixa de marcha</b><span>3D · 60 s · oficina com 3 marchas e relação de engrenagens</span></a>
   <a class="card" href="linux-navegacao-3d.html"><b>Navegação de arquivos no Linux (3D)</b><span>3D · 60 s · robô e terminal CRT: raiz, caminhos, pwd, ls e cd</span></a>
   <a class="card" href="linux-navegacao.html"><b>Navegação de arquivos no Linux (2D)</b><span>2D · 60 s · versão retrô com terminal verde</span></a>
+    <a class="card" href="reflexao-acampamento.html"><b>reflexão (3D)</b><span>2D · 90 s · animado com personagens legais e retrô</span></a>
  </div>
  <footer>A narração usa a voz do seu navegador. Se não ouvir nada, confira o volume e o botão de som.</footer>
 </main>
