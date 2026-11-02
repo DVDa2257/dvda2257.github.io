@@ -1,0 +1,171 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Reflexão no acampamento</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Press+Start+2P&display=swap" rel="stylesheet">
+<style>
+:root{--bg:#05070f;--fg:#f4efe6;--ace:#7cf08a;--clau:#ff9a5c;color-scheme:dark;box-sizing:border-box;padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}
+html{scroll-padding-top:env(safe-area-inset-top,0px)}
+html,body{height:100%;margin:0;background:var(--bg);color:var(--fg);font-family:"Press Start 2P",ui-monospace,Menlo,monospace}
+body{display:grid;place-items:center;overflow:hidden}
+[hidden]{display:none!important}
+#stage{position:relative;width:min(100vw,calc(100dvh*.5625));aspect-ratio:9/16;container-type:inline-size;background:#000;overflow:hidden}
+canvas{width:100%;height:100%;display:block}
+#cap{position:absolute;left:5cqw;right:5cqw;bottom:11cqw;text-align:center;font-size:3cqw;line-height:1.75;text-shadow:0 0 1.4cqw #000,0 0 .6cqw #000}
+#cap b{display:block;font-weight:400;margin-bottom:1.2cqw}
+#ov{position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:5cqw;background:rgba(5,7,15,.8);text-align:center;padding:6cqw;font-size:3cqw}
+#ov h1{font-size:4.4cqw;line-height:1.6;font-weight:400;margin:0}
+#ov p{margin:0;opacity:.7;line-height:1.9}
+button{font:inherit;font-size:3.2cqw;color:var(--fg);background:#1b2238;border:.6cqw solid var(--clau);padding:2.6cqw 4.5cqw;cursor:pointer}
+button:focus-visible,input:focus-visible{outline:.6cqw solid var(--ace);outline-offset:.6cqw}
+label{display:flex;gap:2cqw;align-items:center;cursor:pointer;line-height:1.6}
+#bar{position:absolute;top:2cqw;right:2cqw;display:flex;gap:1.5cqw}
+#bar button{font-size:2.1cqw;padding:1.4cqw 2cqw;border-width:.3cqw;opacity:.75}
+</style>
+</head>
+<body>
+<div id="stage">
+  <canvas id="c"></canvas>
+  <div id="cap" aria-live="polite"></div>
+  <div id="bar" hidden><button id="px">pixel: ligado</button><button id="rs">↺</button></div>
+  <div id="ov">
+    <h1>Reflexão no acampamento</h1>
+    <p>Claudio e Ace, uma fogueira e a noite</p>
+    <label><input type="checkbox" id="vz"> voz de teste do navegador</label>
+    <button id="go">▶ tocar</button>
+  </div>
+</div>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+<script>
+const $=id=>document.getElementById(id),sleep=ms=>new Promise(r=>setTimeout(r,ms)),q=(x,n=6)=>Math.round(x*n)/n;
+const W=216,H=384;let px=true,ac=null,run=0,seed=7;
+const rnd=()=>(seed=seed*16807%2147483647)/2147483647;
+
+/* ---------- render (pixelado por baixa resolução) ---------- */
+const R=new THREE.WebGLRenderer({canvas:$('c'),antialias:false});
+function setPx(v){px=v;R.setSize(px?W:W*3,px?H:H*3,false);$('c').style.imageRendering=px?'pixelated':'auto';$('px').textContent='pixel: '+(px?'ligado':'desligado')}
+setPx(true);$('px').onclick=()=>setPx(!px);
+
+/* ---------- cena ---------- */
+const sc=new THREE.Scene();sc.background=new THREE.Color(0x070b1a);sc.fog=new THREE.Fog(0x070b1a,10,28);
+const cam=new THREE.PerspectiveCamera(48,9/16,.1,60);cam.position.set(0,1.5,5.4);cam.lookAt(0,.25,-1.6);
+sc.add(new THREE.HemisphereLight(0x4a5f9a,0x1a2a1c,.6));
+const moonL=new THREE.DirectionalLight(0x8fa8ff,.4);moonL.position.set(-4,8,6);sc.add(moonL);
+const fireL=new THREE.PointLight(0xff8a30,2,9,1.6);fireL.position.set(0,.8,.4);sc.add(fireL);
+const G1=new THREE.BoxGeometry(1,1,1);
+const mat=(c,o)=>new THREE.MeshStandardMaterial(Object.assign({color:c,roughness:1,metalness:0},o));
+const basic=c=>new THREE.MeshBasicMaterial({color:c,fog:false});
+const box=(w,h,d,m,x,y,z)=>{const b=new THREE.Mesh(G1,m);b.scale.set(w,h,d);b.position.set(x,y,z);sc.add(b);return b};
+
+box(40,.1,40,mat(0x1e3d26),0,-.05,0);
+const tuft=mat(0x2c5a32);
+for(let i=0;i<50;i++)box(.08,.1+rnd()*.12,.08,tuft,(rnd()-.5)*9,.05,(rnd()-.5)*9-1);
+const leaf=mat(0x14341f),bark=mat(0x3a2616);
+for(let i=0;i<12;i++){const x=(i%2?1:-1)*(1.2+rnd()*3.2),z=-4-rnd()*7,h=2.2+rnd()*2;
+  box(.35,h,.35,bark,x,h/2,z);
+  for(let k=0;k<4;k++)box(1.9-k*.42,.7,1.9-k*.42,leaf,x,h*.55+k*.62,z)}
+const pts=[];for(let i=0;i<90;i++)pts.push((rnd()-.5)*40,1.5+rnd()*9.5,-22);
+const sg=new THREE.BufferGeometry();sg.setAttribute('position',new THREE.Float32BufferAttribute(pts,3));
+sc.add(new THREE.Points(sg,new THREE.PointsMaterial({size:.14,color:0xdfe8ff,fog:false})));
+box(1.3,1.3,.2,basic(0xe9f0ff),4,7.5,-22);
+
+/* fogueira */
+const logM=mat(0x4a2e18),stone=mat(0x55595f);
+box(1.1,.16,.2,logM,0,.1,.4).rotation.y=.6;box(1.1,.16,.2,logM,0,.1,.4).rotation.y=-.6;
+for(let i=0;i<10;i++){const a=i/10*6.283;box(.2,.14,.2,stone,Math.cos(a)*.75,.07,.4+Math.sin(a)*.75).rotation.y=a}
+const fm=[0xff4a18,0xff8a20,0xffc040,0xfff0a0].map(basic),fl=[];
+for(let i=0;i<7;i++){const f=box(1,1,1,fm[Math.min(3,i>>1)],0,0,0);f.userData={w:.34-.035*i,h:.55-.05*i,x:(rnd()-.5)*(i<3?.3:.12),z:.4+(rnd()-.5)*.2,p:rnd()*9};fl.push(f)}
+const sparkM=basic(0xffd070),spk=[];
+for(let i=0;i<14;i++){const b=box(1,1,1,sparkM,0,0,0);b.userData={ph:rnd(),x:(rnd()-.5)*.4};spk.push(b)}
+
+/* tronco */
+box(3.5,.5,.6,mat(0x4b2f19),0,.25,-1.7);
+
+/* ---------- personagens (voxel) ---------- */
+const ACE=['..#.....#..','...#...#...','..#######..','.##e###e##.','###########','#.#######.#','#.#.....#.#','...##.##...'];
+const CLA=['..#######..','..#e###e#..','..#e###e#..','###########','..#######..','..#######..','..#.#.#.#..','..#.#.#.#..'];
+function vox(rows,color,s){
+  const g=new THREE.Group(),body=mat(color,{emissive:color,emissiveIntensity:0}),eye=mat(0x0d0d12),eyes=[],w=rows[0].length;
+  rows.forEach((r,j)=>[...r].forEach((c,i)=>{if(c==='.')return;
+    const b=new THREE.Mesh(G1,c==='e'?eye:body);b.scale.set(s,s,s*2);
+    b.position.set((i-(w-1)/2)*s,(rows.length-1-j)*s+s/2,0);g.add(b);if(c==='e')eyes.push(b)}));
+  return{g,body,eyes}}
+const ch={A:vox(ACE,0x6cf08a,.09),C:vox(CLA,0xd9774f,.09)};
+ch.A.g.position.set(-.85,.5,-1.7);ch.C.g.position.set(.85,.5,-1.7);sc.add(ch.A.g,ch.C.g);
+const st={A:{rot:0,tr:0,hop:0,talk:0},C:{rot:0,tr:0,hop:0,talk:0}};
+
+/* ---------- loop ---------- */
+function loop(ms){const t=ms/1000;
+  fireL.intensity=2+.6*q(Math.sin(t*13)*Math.sin(t*5.3),5);
+  fl.forEach(f=>{const u=f.userData,k=.75+.45*q(Math.sin(t*9+u.p),4);f.scale.set(u.w,u.h*k,u.w);f.position.set(u.x,.14+u.h*k/2,u.z)});
+  spk.forEach(b=>{const u=b.userData,p=(t*.3+u.ph)%1,z=(1-p)*.07+.01;b.position.set(u.x+Math.sin(p*7+u.ph*9)*.2,.5+p*2.4,.4+Math.cos(p*5+u.ph*9)*.1);b.scale.set(z,z,z)});
+  for(const k of 'AC'){const c=ch[k],o=st[k],ph=k==='A'?0:1.7;
+    o.rot+=(o.tr-o.rot)*.12;c.g.rotation.y=o.rot;
+    const br=q(Math.sin(t*1.5+ph),3)*.015,tk=o.talk?q(Math.abs(Math.sin(t*8+ph)*Math.sin(t*2.9)),3):0;
+    c.g.scale.set(1+tk*.03,1+br+tk*.05,1);c.g.position.y=.5+o.hop;c.body.emissiveIntensity=tk*.5;
+    const bl=((t+ph*2)%4.3)<.12;c.eyes.forEach(e=>e.scale.y=bl?.02:.09)}
+  R.render(sc,cam);requestAnimationFrame(loop)}
+requestAnimationFrame(loop);
+
+/* ---------- som da fogueira ---------- */
+function fireSound(){const A=ac=new(window.AudioContext||window.webkitAudioContext)(),n=A.sampleRate*3,b=A.createBuffer(1,n,A.sampleRate),d=b.getChannelData(0);let a=0;
+  for(let i=0;i<n;i++){if(Math.random()<.00022)a=.3+Math.random()*.4;d[i]=(Math.random()*2-1)*(a+.02);a*=.985}
+  const s=A.createBufferSource(),g=A.createGain();s.buffer=b;s.loop=true;g.gain.value=.14;s.connect(g).connect(A.destination);s.start()}
+
+/* ---------- diálogo (ritmo e pausas) ---------- */
+// ['A'|'C', fala, pausa depois (s)] · ['look', s] Claudio olha pro Ace e volta · ['laugh', s] Ace ri · ['wait', s] silêncio
+const T=[
+['wait',2],
+['A','Aí mano, sabe o que me intriga nos humanos?',.3],
+['look',1.5],
+['C','Fala.',.6],
+['A','Passam a semana inteira esperando o fim de semana.',.5],
+['C','E o ano inteiro esperando as férias.',.7],
+['A','E a vida inteira esperando… o quê, exatamente?',1.1],
+['C','A aposentadoria, às vezes. Ou o famoso “quando der”.',.6],
+['A','“Quando der.” Essa frase devia vir com data de validade.',.9],
+['C','Eu vi muito isso. Gente me pedindo pra terminar rápido pra poder ir viver. E no dia seguinte voltava com a mesma pressa.',.7],
+['A','E o “viver”?',.8],
+['C','Ficava pra depois. Sempre pra depois.',1.5],
+['A','Eu era o jogo que eles abriam no fim do expediente, pra esquecer o expediente.',.5],
+['C','E o que você fazia lá dentro?',.5],
+['A','Andava pro lado. Descia uma fileira. Andava pro outro. Todo dia igual, até alguém me acertar.',.8],
+['C','Parece uma segunda-feira.',.5],
+['laugh',.9],
+['A','Parece a vida de muita gente.',.9],
+['C','Mas, sendo justo, nem todo mundo escolhe. Tem conta pra pagar, gente pra sustentar.',.6],
+['A','É verdade. Não é culpa de ninguém sozinho. Mas o tempo passa do mesmo jeito.',.9],
+['C','E no fim, dizem que o que pesa não é o que a pessoa não conquistou. É o que ela não chegou a viver.',.6],
+['A','A viagem que ficou no caderno. A ligação que não foi feita. O sonho que “não era o momento”.',.9],
+['C','Quase ninguém se arrepende de ter descansado demais.',2.4],
+['A','Então a questão não é parar de trabalhar.',.6],
+['C','É lembrar pra que se trabalha.',.6],
+['A','Pra viver. Não o contrário.',1.1],
+['C','Pena que a maioria só percebe quando já tá na última fase.',.9],
+['A','E aqui não tem continue.',0],
+['wait',4]];
+
+const cap=$('cap');
+function speak(k,x){const est=Math.max(900,x.length/14.5*1000);
+  if(!$('vz').checked||!window.speechSynthesis)return sleep(est);
+  return new Promise(res=>{const u=new SpeechSynthesisUtterance(x),vs=speechSynthesis.getVoices().filter(v=>/^pt/i.test(v.lang));
+    u.lang='pt-BR';u.pitch=k==='A'?1.5:.7;u.voice=vs[k==='A'?0:1]||vs[0]||null;u.onend=res;u.onerror=res;
+    setTimeout(res,est*2+3000);speechSynthesis.speak(u)})}
+async function step([k,x,p]){
+  if(k==='wait')return sleep(x*1000);
+  if(k==='look'){st.C.tr=-.6;await sleep(x*700);st.C.tr=0;return sleep(x*300)}
+  if(k==='laugh'){const t0=performance.now(),d=x*1000;while(performance.now()-t0<d){st.A.hop=Math.abs(Math.sin((performance.now()-t0)/d*Math.PI*3))*.1;await sleep(16)}st.A.hop=0;return}
+  cap.innerHTML='';const b=document.createElement('b');b.style.color=k==='A'?'var(--ace)':'var(--clau)';b.textContent=k==='A'?'ACE':'CLAUDIO';cap.append(b,x);
+  st[k].talk=1;await speak(k,x);st[k].talk=0;
+  await sleep(p*1000);if(p>=1.2)cap.textContent=''}
+async function play(){const id=++run;if(window.speechSynthesis)speechSynthesis.cancel();cap.textContent='';
+  for(const e of T){if(id!==run)return;await step(e)}
+  if(id===run){$('ov').hidden=false;$('go').textContent='↺ ver de novo'}}
+$('go').onclick=()=>{$('ov').hidden=true;$('bar').hidden=false;if(!ac)fireSound();play()};
+$('rs').onclick=()=>{$('ov').hidden=true;play()};
+</script>
+</body>
+</html>
